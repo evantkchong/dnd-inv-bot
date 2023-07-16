@@ -11,12 +11,12 @@ from telegram.ext import (
     ContextTypes,
 )
 
-from .models import Players, Items
+from .models import Players, Items, CURRENCY_SHORTHAND
 from .serialization import persist, load
 
 CONFIG = {}
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_LV_THRESHOLD = 80
+DEFAULT_LV_THRESHOLD = 65
 DEFAULT_DATA_DIR = os.path.join(SCRIPT_DIR, os.pardir, "data")
 PLAYERS, ITEMS = Players({}), Items({})
 
@@ -84,7 +84,7 @@ async def set_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         PLAYERS.root[update.effective_user.id].account_balance = new_balance
         response = f"{player.first_name}: Your Tinkertales balance has been set to ${player.account_balance}"
     except ValueError:
-        response = "You may only set your Tinkertales balance to a numerical value"
+        response = f"{player.first_name}: You may only set your Tinkertales balance to a numerical value"
 
     persist(PLAYERS)
     await context.bot.send_message(
@@ -93,6 +93,7 @@ async def set_balance(update: Update, context: ContextTypes.DEFAULT_TYPE):
         message_thread_id=update.effective_message.message_thread_id,
     )
 
+
 async def remaining_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global PLAYERS
     player = PLAYERS.get_player(
@@ -100,7 +101,6 @@ async def remaining_sessions(update: Update, context: ContextTypes.DEFAULT_TYPE)
         update.effective_user.first_name,
         update.effective_user.username,
     )
-    print(player)
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
         text=f"{player.first_name}: You have sufficient account balance for {player.remaining_sessions()} D&D sessions",
@@ -118,14 +118,47 @@ async def get_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     cb = player.get_currency_balance()
     cb_str = ""
-    for k, v in cb:
-        cb_str += f"{k}: {v},"
-
+    for k, v in cb.items():
+        cb_str += f"{k}: {v}, "
+    cb_str = cb_str.rstrip(", ")
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"{player.first_name}: You own the following moni {cb_str}",
+        text=f"{player.first_name}: Your coffers contain:\n{cb_str}",
         message_thread_id=update.effective_message.message_thread_id,
     )
+
+
+async def set_currency(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global PLAYERS
+    player = PLAYERS.get_player(
+        update.effective_user.id,
+        update.effective_user.first_name,
+        update.effective_user.username,
+    )
+    try:
+        args = iter(context.args)
+        paired_args = zip(args, args)
+
+        incoming_pieces = {}
+        for num_units, unit in paired_args:
+            denomination = CURRENCY_SHORTHAND[unit[0]]
+            incoming_pieces[denomination] = num_units
+        incoming_pieces_str = ""
+        for k, v in incoming_pieces.items():
+            incoming_pieces_str += f"{k}: {v}, "
+        incoming_pieces_str = incoming_pieces_str.rstrip(", ")
+        response = f"{player.first_name}: Added to your paylah wallet:\n{incoming_pieces_str}"
+    except Exception as e:
+        print(e)
+        response = f"{player.first_name}: Please input currency in the following format:\n1 pp 10 gp 2 sp 3 cp"
+
+    persist(PLAYERS)
+    await context.bot.send_message(
+        chat_id=update.effective_chat.id,
+        text= response,
+        message_thread_id=update.effective_message.message_thread_id,
+    )
+
 
 async def get_item_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     global CONFIG, PLAYERS, ITEMS
@@ -137,9 +170,10 @@ async def get_item_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     item = ITEMS.get_item(item_name, lv_threshold=CONFIG["general"]["lv_threshold"])
     qty = player.get_item_qty(item.name)
+
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"{qty}x {item.name}",
+        text=f"{player.first_name}: You own {qty} x {item.name}",
         message_thread_id=update.effective_message.message_thread_id,
     )
 
@@ -158,10 +192,10 @@ async def set_item_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         item_name = item.name
         PLAYERS.root[update.effective_user.id].inventory[item_name] = new_qty
         response = (
-            f"The qty of {item_name} has been set to {new_qty} for {player.username}"
+            f"{player.first_name}: The qty of {item_name} has been set to {new_qty}"
         )
     except ValueError:
-        response = f"The qty of {item_name} must be an integer"
+        response = f"{player.first_name}: The qty of {item_name} must be an integer"
 
     persist(PLAYERS)
     persist(ITEMS)
@@ -180,13 +214,15 @@ if __name__ == "__main__":
     set_balance_handler = CommandHandler("set_balance", set_balance)
     get_remaining_sessions = CommandHandler("remaining_sessions", remaining_sessions)
     get_currency_handler = CommandHandler("get_currency", get_currency)
-    get_item_qty_handler = CommandHandler("get_item_qty", get_item_qty)
-    set_item_qty_handler = CommandHandler("set_item_qty", set_item_qty)
+    set_currency_handler = CommandHandler("set_currency", set_currency)
+    get_item_qty_handler = CommandHandler("get_item", get_item_qty)
+    set_item_qty_handler = CommandHandler("set_item", set_item_qty)
 
     application.add_handler(get_balance_handler)
     application.add_handler(set_balance_handler)
     application.add_handler(get_remaining_sessions)
     application.add_handler(get_currency_handler)
+    application.add_handler(set_currency_handler)
     application.add_handler(get_item_qty_handler)
     application.add_handler(set_item_qty_handler)
 

@@ -5,6 +5,12 @@ from typing import Dict
 from pydantic import BaseModel, RootModel
 
 DEFAULT_SESSION_PRICE = 30
+CURRENCY_SHORTHAND = {
+    "p": "platinum",
+    "g": "gold",
+    "s": "silver",
+    "c": "copper",
+}
 CURRENCY_CONVERSION = OrderedDict(
     platinum=1000,
     gold=100,
@@ -33,7 +39,7 @@ class Player(BaseModel):
     def get_currency_balance(self) -> OrderedDict:
         balance = OrderedDict()
         remainder = self.copper_pieces
-        for denomination, value in CURRENCY_CONVERSION:
+        for denomination, value in CURRENCY_CONVERSION.items():
             num_units = remainder // value
             balance[denomination] = num_units
             remainder = remainder - (value * num_units)
@@ -47,14 +53,14 @@ class Player(BaseModel):
             return 0
         return self.copper_pieces // CURRENCY_CONVERSION[denomination]
 
-    def add_currency(self, incoming_pieces: dict) -> None:
+    def set_currency(self, incoming_pieces: dict) -> None:
         for denomination, num_units in incoming_pieces:
             self.copper_pieces += CURRENCY_CONVERSION.get(denomination, 0) * num_units
 
 
 class Players(RootModel):
     _filepath = None
-    root: Dict[str, Player]
+    root: Dict[int, Player]
 
     def get_player(self, telegram_id: int, first_name: str, username: str):
         return self.root.setdefault(
@@ -76,7 +82,7 @@ class Items(RootModel):
             return True
         return False
 
-    def get_item(self, item_name: str, lv_threshold: int = 80) -> Item:
+    def get_item(self, item_name: str, lv_threshold: int = 65) -> Item:
         if not self.root:
             print(f"Dictionary is empty. Creating entry for {item_name}")
             item = Item(name=item_name)
@@ -87,6 +93,7 @@ class Items(RootModel):
             return self.root[item_name]
         except KeyError:
             result = process.extract(item_name, self.root.keys())[0]
+            print(result)
             if result[1] >= lv_threshold:
                 print(f"Similar item {result[0]} of Levenshtein Distance {result[1]} found")
                 item_name = result[0]
